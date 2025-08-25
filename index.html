@@ -59,10 +59,13 @@ function log(msg,isErr=false){
 
 /* Funzione principale che parte SOLO al click */
 function startAd(){
-  startBtn.style.display="none"; // sparisce il botton
+  startBtn.style.display="none"; // sparisce il bottone
+  log("Avvio annuncio...");
 
   // Scegli un indice casuale
   const adIndex=Math.floor(Math.random()*TOTAL_ADS)+1;
+  log("Indice scelto: ad"+adIndex);
+
   const imgBasename="ad"+adIndex;
   const imgCandidates=[imgBasename+".png",imgBasename+".jpg",imgBasename+".jpeg"];
   const audioBasename="adaudio"+adIndex+".mp3";
@@ -72,6 +75,8 @@ function startAd(){
     if(list.length===0){ log("Nessuna immagine trovata per: "+imgBasename,true); return; }
     const attempt=list.shift();
     imgEl.src=attempt;
+    imgEl.onload=()=>{ log("Immagine caricata: "+attempt); imgEl.style.display="block"; };
+    imgEl.onerror=()=>{ log("Immagine non trovata: "+attempt); tryNextImage(list); };
   }
   tryNextImage(imgCandidates.slice());
 
@@ -107,4 +112,3 @@ closeBtn.addEventListener('click',()=>{
 </script>
 </body>
 </html>
-
