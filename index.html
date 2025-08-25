@@ -3,179 +3,108 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Ad Player</title>
+  <title>Ad Player con bottone start</title>
   <style>
-    :root{--bg:#000;--fg:#fff}
+    :root { --bg:#000; --fg:#fff; }
     *{box-sizing:border-box}
     html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Arial,sans-serif}
-    /* STAGE */
-    #stage{height:100%;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
-    #adImg{max-width:100%;max-height:100%;display:none;border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.6)}
-    /* HUD top-left */
-    #hud{position:fixed;top:10px;left:10px;z-index:9999;display:flex;gap:8px;align-items:center;pointer-events:auto}
-    #counter{display:none;background:rgba(0,0,0,.6);padding:6px 10px;border-radius:8px;font-size:clamp(16px,4.5vw,24px);font-weight:800}
-    #closeBtn{display:none;background:#e11;color:#fff;border:0;padding:6px 10px;border-radius:8px;font-weight:900;cursor:pointer;font-size:18px}
-    /* START BUTTON centralissimo (alto z-index, pointer-events ok) */
-    #startBtn{
-      position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
-      z-index:2147483647; /* molto alto */
-      padding:16px 34px; border-radius:12px; background:#0a8f3c; color:#fff; border:0;
-      font-size:22px; cursor:pointer; box-shadow:0 8px 24px rgba(10,143,60,.25);
-      -webkit-tap-highlight-color: transparent;
-    }
-    /* rendilo visibile su mobile */
-    @media (max-width:420px){
-      #startBtn{padding:14px 28px;font-size:18px}
-      #counter{font-size:18px}
-      #closeBtn{font-size:16px;padding:6px 8px}
-    }
+    #stage{height:100%;display:flex;align-items:center;justify-content:center;position:relative;padding:12px}
+    img#ad { max-width:92vw; max-height:86vh; border-radius:10px; display:none; }
+    /* countdown in alto a sinistra */
+    #hud { position:fixed; top:10px; left:10px; z-index:9999; display:flex; gap:8px; align-items:center; }
+    #counter { background:rgba(0,0,0,.6); padding:6px 10px; border-radius:8px; font-weight:800; font-size:18px; display:none; }
+    #closeBtn { display:none; background:#e11; color:#fff; border:none; padding:6px 10px; border-radius:8px; cursor:pointer; font-weight:800 }
+    #startBtn { background:#1a1; color:#fff; border:none; padding:14px 20px; border-radius:10px; cursor:pointer; font-size:20px; font-weight:800 }
+    #log { position:fixed; left:12px; right:12px; bottom:12px; max-height:26vh; overflow:auto; font-size:13px;
+          background:rgba(0,0,0,0.6); padding:8px; border-radius:10px; color:#ddd; }
+    .err{color:#ff9b9b}
   </style>
 </head>
 <body>
-
-  <!-- ===== CONFIG: cambia solo questa variabile ===== -->
-  <script>const NUM_ADS = 10; /* <<-- metti qui quanti ad potresti avere (es. 700) */</script>
-  <!-- ================================================= -->
-
   <div id="stage">
-    <img id="adImg" alt="Annuncio">
+    <button id="startBtn">▶ Riproduci</button>
+    <img id="ad" src="" alt="Ad">
   </div>
 
   <div id="hud">
     <div id="counter">8</div>
-    <button id="closeBtn" aria-label="Chiudi annuncio">✕</button>
+    <button id="closeBtn">✕</button>
   </div>
 
-  <button id="startBtn" aria-label="Avvia annuncio">▶ Riproduci</button>
+  <div id="log" aria-live="polite"></div>
 
-  <audio id="adAudio" playsinline></audio>
+  <audio id="audio" preload="auto" playsinline></audio>
 
 <script>
-/* minimal, pulito, no logs visibili */
+/* ---------------- CONFIG ---------------- */
+const TOTAL_ADS = 1; // 👈 QUI cambi il numero di ads disponibili (ad1...adN)
+
+/* ---------------- Variabili UI ---------------- */
+const LOG = document.getElementById('log');
+const imgEl = document.getElementById('ad');
+const audioEl = document.getElementById('audio');
 const startBtn = document.getElementById('startBtn');
-const adImg = document.getElementById('adImg');
-const adAudio = document.getElementById('adAudio');
 const counterEl = document.getElementById('counter');
 const closeBtn = document.getElementById('closeBtn');
 
-/* helper: prova estensioni per immagine */
-function probeImageForIndex(i){
-  const exts = ['.png','.jpg','.jpeg'];
-  return new Promise((resolve,reject)=>{
-    let k = 0;
-    function tryOne(){
-      if(k >= exts.length){ reject(); return; }
-      const url = ad${i}${exts[k]};
-      const img = new Image();
-      img.onload = ()=> resolve(url);
-      img.onerror = ()=> { k++; tryOne(); };
-      img.src = url;
-    }
-    tryOne();
-  });
+/* Funzione log debug */
+function log(msg,isErr=false){
+  console.log(msg);
+  const p=document.createElement('div');
+  if(isErr)p.classList.add('err');
+  p.textContent=msg;
+  LOG.appendChild(p);
+  LOG.scrollTop=LOG.scrollHeight;
 }
 
-/* crea ordine random 1..n */
-function shuffledRange(n){
-  const a = Array.from({length:n}, (_,i)=>i+1);
-  for(let i=a.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i],a[j]] = [a[j],a[i]];
+/* Funzione principale che parte SOLO al click */
+function startAd(){
+  startBtn.style.display="none"; // sparisce il botton
+
+  // Scegli un indice casuale
+  const adIndex=Math.floor(Math.random()*TOTAL_ADS)+1;
+  const imgBasename="ad"+adIndex;
+  const imgCandidates=[imgBasename+".png",imgBasename+".jpg",imgBasename+".jpeg"];
+  const audioBasename="adaudio"+adIndex+".mp3";
+
+  // carica immagine
+  function tryNextImage(list){
+    if(list.length===0){ log("Nessuna immagine trovata per: "+imgBasename,true); return; }
+    const attempt=list.shift();
+    imgEl.src=attempt;
   }
-  return a;
-}
+  tryNextImage(imgCandidates.slice());
 
-/* trova primo ad esistente (prova in ordine random) */
-async function findExistingAd(maxAds){
-  const order = shuffledRange(Math.max(1, Math.floor(maxAds)));
-  for(const idx of order){
-    try{
-      const url = await probeImageForIndex(idx);
-      return {index: idx, imgUrl: url};
-    }catch(e){
-      // continua
+  // prepara audio
+  audioEl.src=audioBasename;
+  audioEl.oncanplay=()=>{ log("Audio pronto: "+audioBasename); audioEl.play().catch(()=>log("Audio avviabile solo dopo interazione.")); };
+  audioEl.onerror=()=>{ log("Audio non trovato: "+audioBasename); };
+
+  // avvia timer
+  let seconds=8;
+  counterEl.style.display="block";
+  counterEl.textContent=seconds;
+  const timerId=setInterval(()=>{
+    seconds--;
+    counterEl.textContent=seconds;
+    if(seconds<=0){
+      clearInterval(timerId);
+      counterEl.style.display='none';
+      closeBtn.style.display='inline-block';
     }
-  }
-  return null;
+  },1000);
 }
 
-/* prova ad avviare audio adaudio{n}.mp3 */
-function tryPlayAudioForIndex(n){
-  return new Promise((resolve)=>{
-    const url = adaudio${n}.mp3;
-    adAudio.src = url;
-    adAudio.load();
-    let finished = false;
-    function ok(){ if(finished) return; finished = true; resolve(true); }
-    function nok(){ if(finished) return; finished = true; resolve(false); }
-    adAudio.addEventListener('canplaythrough', ok, {once:true});
-    adAudio.addEventListener('error', nok, {once:true});
-    setTimeout(()=>{ if(finished) return; if(adAudio.readyState>0){ adAudio.play().catch(()=>{}); finished=true; resolve(true);} else { finished=true; resolve(false); } }, 700);
-  });
-}
+/* click del bottone start */
+startBtn.addEventListener('click', startAd);
 
-/* start sequence: entra in fullscreen (se possibile), poi mostra ad + audio + timer */
-async function startSequence(){
-  // richiesta fullscreen (richiede gesture utente)
-  try {
-    const docEl = document.documentElement;
-    if (docEl.requestFullscreen) await docEl.requestFullscreen();
-    else if (docEl.webkitRequestFullscreen) docEl.webkitRequestFullscreen(); // iOS-ish (parziale)
-    else if (docEl.msRequestFullscreen) docEl.msRequestFullscreen();
-  } catch(e) { /* se fallisce, prosegui comunque */ }
-
-  // nascondi start button
-  startBtn.style.display = 'none';
-
-  // trova ad esistente
-  const found = await findExistingAd(NUM_ADS);
-  if(!found){
-    // fallback visivo semplice: niente da mostrare
-    adImg.style.display = 'none';
-    counterEl.style.display = 'none';
-    closeBtn.style.display = 'inline-block';
-    return;
-  }
-
-  adImg.src = found.imgUrl;
-  adImg.style.display = 'block';
-
-  // prova audio (se presente)
-  tryPlayAudioForIndex(found.index);
-
-  // countdown 8 -> 0
-  let t = 8;
-  counterEl.textContent = t;
-  counterEl.style.display = 'block';
-  const id = setInterval(()=>{
-    t--;
-    counterEl.textContent = t;
-    if(t <= 0){
-      clearInterval(id);
-      counterEl.style.display = 'none';
-      closeBtn.style.display = 'inline-block';
-    }
-  }, 1000);
-}
-
-/* listener start: gestisce click/touch/pointer (robusto su mobile) */
-function onStart(e){
-  if(e.preventDefault) e.preventDefault();
-  startSequence();
-}
-startBtn.addEventListener('click', onStart);
-startBtn.addEventListener('pointerdown', onStart);
-startBtn.addEventListener('touchstart', onStart, {passive:false});
-
-/* close: prova a uscire dal fullscreen e pulire la pagina */
-closeBtn.addEventListener('click', async ()=>{
-  try { if(document.fullscreenElement){ await document.exitFullscreen(); } } catch(e){}
+/* click chiusura */
+closeBtn.addEventListener('click',()=>{
+  log("Chiusura richiesta dall'utente.");
   try{ window.close(); }catch(e){}
-  // fallback pulito
-  document.documentElement.innerHTML = '<body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh"><h2>Annuncio chiuso ✅</h2></body>';
+  setTimeout(()=>{ document.body.innerHTML="<h2 style='color:white;text-align:center;margin-top:30vh'>Annuncio chiuso</h2>"; },150);
 });
-
-/* fine */
 </script>
 </body>
 </html>
+
